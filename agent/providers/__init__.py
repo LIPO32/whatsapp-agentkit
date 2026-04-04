@@ -16,5 +16,8 @@ def obtener_proveedor() -> ProveedorWhatsApp:
     if proveedor == "whapi":
         from agent.providers.whapi import ProveedorWhapi
         return ProveedorWhapi()
+    elif proveedor == "zapi":
+        from agent.providers.zapi import ProveedorZapi
+        return ProveedorZapi()
     else:
-        raise ValueError(f"Proveedor no soportado: {proveedor}. Usá: whapi")
+        raise ValueError(f"Proveedor no soportado: {proveedor}. Usá: whapi | zapi")
