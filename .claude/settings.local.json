@@ -18,7 +18,19 @@
       "Write",
       "Edit",
       "Glob",
-      "Grep"
+      "Grep",
+      "Bash(python3 -m pip install -r /home/emir/whatsapp-agentkit/requirements.txt -q)",
+      "Bash(python3.12 -m ensurepip --upgrade)",
+      "Bash(python3.12 -m pip install -r /home/emir/whatsapp-agentkit/requirements.txt -q)",
+      "Bash(apt-get install:*)",
+      "Bash(curl -sS https://bootstrap.pypa.io/get-pip.py)",
+      "Bash(python3.12)",
+      "Bash(python3.12 -m venv /home/emir/whatsapp-agentkit/.venv)",
+      "Bash(/home/emir/whatsapp-agentkit/.venv/bin/pip install:*)",
+      "Bash(sudo apt-get:*)",
+      "Bash(.venv/bin/python -c \"\nimport sys\nsys.path.insert\\(0, '.'\\)\nfrom agent.brain import cargar_system_prompt\nprompt = cargar_system_prompt\\(\\)\nprint\\('System prompt OK — primeras 100 chars:', prompt[:100]\\)\n\")",
+      "Bash(.venv/bin/python -c \"\nimport sys\nsys.path.insert\\(0, '.'\\)\nfrom agent.memory import inicializar_db\nimport asyncio\nasyncio.run\\(inicializar_db\\(\\)\\)\nprint\\('Base de datos OK'\\)\n\")",
+      "Bash(python:*)"
     ]
   }
 }
