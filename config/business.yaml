@@ -9,7 +9,7 @@ negocio:
     El negocio es operado por una sola persona (la dueña, Silvana) y maneja
     aproximadamente 20 clientes y entre 30 y 40 productos por pedido.
   horario: "24/7 — el agente atiende siempre. La dueña recibe resúmenes al cierre de cada conversación."
-  numero_whatsapp_duena: "+542215639673"
+  numero_whatsapp_duena: "+5492215639673"
 
 agente:
   nombre: "Silvana"
