@@ -716,5 +716,23 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                 )
                 await proveedor.enviar_mensaje(TELEFONO_DUENA, mensaje_silvana)
 
+            # ── DESCUENTO DE STOCK ────────────────────────────────────────────
+            # Si se confirmó una venta, intentar identificar el producto y
+            # restar 1 unidad en Google Sheets. Se ejecuta después de notificar a Silvana.
+            if hay_senal_venta:
+                try:
+                    from agent.sheets import extraer_producto_de_venta, descontar_unidad
+                    nombre_producto = await extraer_producto_de_venta(msg.texto, respuesta)
+                    if nombre_producto:
+                        await descontar_unidad(nombre_producto)
+                        logger.info(f"[Stock] Unidad descontada: '{nombre_producto}'")
+                    else:
+                        logger.debug(
+                            "[Stock] Venta detectada pero no se identificó el producto — "
+                            "revisar manualmente en el sheet"
+                        )
+                except Exception as e:
+                    logger.error(f"[Stock] Error al descontar stock: {e}")
+
         except Exception as e:
             logger.error(f"Error procesando mensaje de {msg.telefono}: {e}")

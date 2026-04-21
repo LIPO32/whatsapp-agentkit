@@ -379,12 +379,22 @@ async def generar_respuesta(
     if resumen_cliente:
         system_prompt += f"\n\n## Perfil del cliente actual\n{resumen_cliente}"
 
-    # Solo cargar el catálogo si el mensaje lo requiere — reduce costo por request
+    # Solo cargar catálogos si el mensaje lo requiere — reduce costo por request
     if necesita_knowledge(mensaje):
         catalogos = leer_catalogos_pdf()
         if catalogos:
-            logger.debug("Catálogo cargado para este request")
+            logger.debug("Catálogo estático cargado para este request")
             system_prompt += f"\n\n## Catálogos de productos disponibles\n{catalogos}"
+
+        # Stock en tiempo real desde Google Sheets (tiene prioridad sobre los catálogos)
+        try:
+            from agent.sheets import obtener_stock_para_prompt
+            stock_texto = await obtener_stock_para_prompt()
+            if stock_texto:
+                logger.debug("Stock en tiempo real cargado para este request")
+                system_prompt += f"\n\n{stock_texto}"
+        except Exception as e:
+            logger.warning(f"[Sheets] No se pudo cargar stock en tiempo real: {e}")
     else:
         logger.debug("Catálogo omitido (mensaje no relacionado a productos)")
 
