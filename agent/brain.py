@@ -381,6 +381,7 @@ async def generar_respuesta(
 
     # Solo cargar catálogos si el mensaje lo requiere — reduce costo por request
     if necesita_knowledge(mensaje):
+        logger.info(f"[Brain] Knowledge activado para mensaje: {mensaje[:50]!r}")
         catalogos = leer_catalogos_pdf()
         if catalogos:
             logger.debug("Catálogo estático cargado para este request")

@@ -48,10 +48,18 @@ def _get_client() -> gspread.Client:
     """
     json_var = os.getenv("GOOGLE_CREDENTIALS_JSON")
     if json_var:
-        info = json.loads(json_var)
-        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+        try:
+            info = json.loads(json_var)
+            creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+        except Exception as e:
+            logger.info(f"[Sheets] Error de autenticación Google Sheets: {e}")
+            raise
     else:
-        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+        try:
+            creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+        except Exception as e:
+            logger.info(f"[Sheets] Error de autenticación Google Sheets: {e}")
+            raise
     return gspread.authorize(creds)
 
 
@@ -102,11 +110,14 @@ def _sync_get_stock() -> list[dict]:
         sheet = _get_sheet()
         filas = sheet.get_all_values()
         if not filas:
+            logger.info("[Sheets] Stock cargado OK — 0 productos encontrados (sheet vacío)")
             return []
         datos = filas[1:] if _es_fila_header(filas[0]) else filas
-        return [_fila_a_dict(f) for f in datos if any(c.strip() for c in f)]
+        productos = [_fila_a_dict(f) for f in datos if any(c.strip() for c in f)]
+        logger.info(f"[Sheets] Stock cargado OK — {len(productos)} productos encontrados")
+        return productos
     except Exception as e:
-        logger.error(f"[Sheets] Error leyendo stock: {e}")
+        logger.info(f"[Sheets] Error leyendo sheet: {e}")
         return []
 
 
@@ -189,6 +200,13 @@ async def obtener_stock_para_prompt() -> str:
     Retorna el stock formateado para inyectar en el system prompt de Claude.
     Los datos del sheet tienen prioridad sobre los catálogos estáticos de /knowledge.
     """
+    json_var = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    credentials_file = os.getenv("GOOGLE_CREDENTIALS_PATH", "credentials/google_sheets.json")
+    if not json_var and not os.path.exists(credentials_file):
+        logger.info("[Sheets] Google Sheets no configurado — saltando stock")
+        return ""
+
+    logger.info("[Sheets] Iniciando carga de stock desde Google Sheets")
     productos = await get_stock()
     if not productos:
         return ""

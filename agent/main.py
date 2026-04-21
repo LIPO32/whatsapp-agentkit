@@ -399,7 +399,15 @@ async def procesar_modo_admin(texto: str) -> None:
 
     # Enviar respuesta de texto
     if respuesta_texto:
-        await proveedor.enviar_mensaje(TELEFONO_DUENA, respuesta_texto)
+        logger.info(
+            f"[Notif→Silvana] ANTES admin-respuesta | "
+            f"destino={TELEFONO_DUENA} | proveedor={proveedor.__class__.__name__} | "
+            f"contenido={respuesta_texto[:120]!r}"
+        )
+        exito_resp = await proveedor.enviar_mensaje(TELEFONO_DUENA, respuesta_texto)
+        logger.info(
+            f"[Notif→Silvana] DESPUÉS admin-respuesta | resultado={'OK' if exito_resp else 'FALLO ❌'}"
+        )
 
     # Si se generó un archivo .ics, enviarlo como documento
     if ruta_ics:
@@ -416,10 +424,18 @@ async def procesar_modo_admin(texto: str) -> None:
             pass
 
         if not exito_doc:
-            await proveedor.enviar_mensaje(
-                TELEFONO_DUENA,
+            _msg_ics_fb = (
                 "⚠️ No pude enviar el archivo .ics. "
-                "Copiá los datos del evento de arriba para agregarlo manualmente a tu calendario.",
+                "Copiá los datos del evento de arriba para agregarlo manualmente a tu calendario."
+            )
+            logger.info(
+                f"[Notif→Silvana] ANTES ics-fallback | "
+                f"destino={TELEFONO_DUENA} | proveedor={proveedor.__class__.__name__} | "
+                f"contenido={_msg_ics_fb[:120]!r}"
+            )
+            exito_ics_fb = await proveedor.enviar_mensaje(TELEFONO_DUENA, _msg_ics_fb)
+            logger.info(
+                f"[Notif→Silvana] DESPUÉS ics-fallback | resultado={'OK' if exito_ics_fb else 'FALLO ❌'}"
             )
 
 
@@ -470,8 +486,15 @@ async def test_notificacion_silvana():
         f"Proveedor: {proveedor.__class__.__name__}"
     )
 
-    logger.info(f"[Test] Iniciando prueba de envío a Silvana → '{telefono_destino}'")
+    logger.info(
+        f"[Notif→Silvana] ANTES test | "
+        f"destino={telefono_destino} | proveedor={proveedor.__class__.__name__} | "
+        f"contenido={mensaje_prueba[:120]!r}"
+    )
     exito = await proveedor.enviar_mensaje(telefono_destino, mensaje_prueba)
+    logger.info(
+        f"[Notif→Silvana] DESPUÉS test | resultado={'OK' if exito else 'FALLO ❌'}"
+    )
 
     if exito:
         logger.info("[Test] Mensaje de prueba enviado correctamente a Silvana")
@@ -544,9 +567,15 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                 await procesar_modo_admin(msg.texto)
             except Exception as e:
                 logger.error(f"[Admin] Error procesando comando de Silvana: {e}")
-                await proveedor.enviar_mensaje(
-                    TELEFONO_DUENA,
-                    f"⚠️ Error al procesar el comando: {e}",
+                _msg_admin_err = f"⚠️ Error al procesar el comando: {e}"
+                logger.info(
+                    f"[Notif→Silvana] ANTES admin-error | "
+                    f"destino={TELEFONO_DUENA} | proveedor={proveedor.__class__.__name__} | "
+                    f"contenido={_msg_admin_err[:120]!r}"
+                )
+                exito_admin_err = await proveedor.enviar_mensaje(TELEFONO_DUENA, _msg_admin_err)
+                logger.info(
+                    f"[Notif→Silvana] DESPUÉS admin-error | resultado={'OK' if exito_admin_err else 'FALLO ❌'}"
                 )
             continue
 
@@ -563,7 +592,15 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                     "3. Reiniciá el servidor en Railway"
                 )
                 logger.warning(f"Enviando alerta de créditos agotados a Silvana ({TELEFONO_DUENA})")
-                await proveedor.enviar_mensaje(TELEFONO_DUENA, alerta)
+                logger.info(
+                    f"[Notif→Silvana] ANTES alerta-402-pre | "
+                    f"destino={TELEFONO_DUENA} | proveedor={proveedor.__class__.__name__} | "
+                    f"contenido={alerta[:120]!r}"
+                )
+                exito_alerta_pre = await proveedor.enviar_mensaje(TELEFONO_DUENA, alerta)
+                logger.info(
+                    f"[Notif→Silvana] DESPUÉS alerta-402-pre | resultado={'OK' if exito_alerta_pre else 'FALLO ❌'}"
+                )
             logger.warning(f"Agente detenido — mensaje de {msg.telefono} no procesado")
             return
 
@@ -591,7 +628,15 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                     "3. Reiniciá el servidor en Railway"
                 )
                 logger.warning(f"Enviando alerta 402 a Silvana ({TELEFONO_DUENA})")
-                await proveedor.enviar_mensaje(TELEFONO_DUENA, alerta)
+                logger.info(
+                    f"[Notif→Silvana] ANTES alerta-402-mid | "
+                    f"destino={TELEFONO_DUENA} | proveedor={proveedor.__class__.__name__} | "
+                    f"contenido={alerta[:120]!r}"
+                )
+                exito_alerta_mid = await proveedor.enviar_mensaje(TELEFONO_DUENA, alerta)
+                logger.info(
+                    f"[Notif→Silvana] DESPUÉS alerta-402-mid | resultado={'OK' if exito_alerta_mid else 'FALLO ❌'}"
+                )
 
             identificador_cliente = (
                 resumen_cliente.split("\n")[0].strip()
@@ -714,7 +759,16 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                     f"[Notif] Enviando notificación consolidada a Silvana "
                     f"({len(partes_notif)} sección/es)"
                 )
-                await proveedor.enviar_mensaje(TELEFONO_DUENA, mensaje_silvana)
+                logger.info(
+                    f"[Notif→Silvana] ANTES consolidada | "
+                    f"destino={TELEFONO_DUENA} | proveedor={proveedor.__class__.__name__} | "
+                    f"secciones={len(partes_notif)} | "
+                    f"contenido={mensaje_silvana[:120]!r}"
+                )
+                exito_notif = await proveedor.enviar_mensaje(TELEFONO_DUENA, mensaje_silvana)
+                logger.info(
+                    f"[Notif→Silvana] DESPUÉS consolidada | resultado={'OK' if exito_notif else 'FALLO ❌'}"
+                )
 
             # ── DESCUENTO DE STOCK ────────────────────────────────────────────
             # Si se confirmó una venta, intentar identificar el producto y
