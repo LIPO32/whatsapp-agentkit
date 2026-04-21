@@ -52,6 +52,13 @@ log_level = logging.DEBUG if ENVIRONMENT == "development" else logging.INFO
 logging.basicConfig(level=log_level)
 logger = logging.getLogger("agentkit")
 
+# Silenciar loggers ruidosos de librerías externas
+logging.getLogger("python_multipart").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8000))
 
@@ -649,13 +656,47 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                 .replace("@c.us", "")
             )
 
-            # Guardar el intercambio en memoria
+            # Extraer bloque ---RESUMEN PARA SILVANA--- si Claude lo incluyó.
+            # El cliente nunca debe verlo: se extrae, se envía a Silvana y se limpia la respuesta.
+            # También se guarda la versión limpia en memoria para no contaminar el historial.
+            _MARCA_INI = "---RESUMEN PARA SILVANA---"
+            _MARCA_FIN = "---FIN RESUMEN---"
+            resumen_inline: str | None = None
+            if _MARCA_INI in respuesta:
+                idx_ini = respuesta.index(_MARCA_INI)
+                idx_fin = respuesta.find(_MARCA_FIN, idx_ini)
+                if idx_fin != -1:
+                    resumen_inline = respuesta[idx_ini: idx_fin + len(_MARCA_FIN)].strip()
+                    respuesta = (respuesta[:idx_ini] + respuesta[idx_fin + len(_MARCA_FIN):]).strip()
+                else:
+                    # Bloque incompleto (sin marcador de cierre): extraer todo desde el marcador
+                    resumen_inline = respuesta[idx_ini:].strip()
+                    respuesta = respuesta[:idx_ini].strip()
+                logger.info(
+                    f"[Resumen] Bloque RESUMEN PARA SILVANA extraído de la respuesta "
+                    f"({len(resumen_inline)} chars) — respuesta limpia: {len(respuesta)} chars"
+                )
+
+            # Guardar el intercambio en memoria (con la respuesta ya limpia)
             await guardar_mensaje(msg.telefono, "user", msg.texto)
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
 
-            # Enviar respuesta al cliente
+            # Enviar respuesta al cliente (sin el bloque de resumen)
             await proveedor.enviar_mensaje(msg.telefono, respuesta)
             logger.info(f"Respuesta enviada a {msg.telefono}")
+
+            # Enviar el resumen inline a Silvana si Claude lo generó en esta respuesta
+            if resumen_inline:
+                logger.info(
+                    f"[Notif→Silvana] ANTES resumen-inline | "
+                    f"destino={TELEFONO_DUENA} | proveedor={proveedor.__class__.__name__} | "
+                    f"contenido={resumen_inline[:120]!r}"
+                )
+                exito_resumen_inline = await proveedor.enviar_mensaje(TELEFONO_DUENA, resumen_inline)
+                logger.info(
+                    f"[Notif→Silvana] DESPUÉS resumen-inline | "
+                    f"resultado={'OK' if exito_resumen_inline else 'FALLO ❌'}"
+                )
 
             # ── NOTIFICACIONES A SILVANA (consolidadas en UN solo mensaje) ────
             #
