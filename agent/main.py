@@ -819,10 +819,11 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                     from agent.sheets import extraer_producto_de_venta, descontar_unidad
                     nombre_producto = await extraer_producto_de_venta(msg.texto, respuesta)
                     if nombre_producto:
+                        logger.info(f"[Stock] Intentando descontar: '{nombre_producto}'")
                         await descontar_unidad(nombre_producto)
-                        logger.info(f"[Stock] Unidad descontada: '{nombre_producto}'")
+                        logger.info(f"[Stock] Llamada a descontar_unidad completada para: '{nombre_producto}'")
                     else:
-                        logger.debug(
+                        logger.info(
                             "[Stock] Venta detectada pero no se identificó el producto — "
                             "revisar manualmente en el sheet"
                         )

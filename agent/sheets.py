@@ -158,7 +158,16 @@ def _sync_descontar_unidad(nombre: str) -> bool:
             except (ValueError, TypeError):
                 cantidad_actual = 0
 
-            nueva_cantidad = max(0, cantidad_actual - 1)
+            logger.info(
+                f"[Sheets] Producto encontrado: '{nombre_fila}' | "
+                f"CANTIDAD actual={cantidad_actual}"
+            )
+
+            if cantidad_actual == 0:
+                logger.info(f"[Sheets] '{nombre_fila}' ya tiene CANTIDAD=0 — sin modificar")
+                return True
+
+            nueva_cantidad = cantidad_actual - 1
 
             # Fila en gspread es 1-based; si hay header, los datos empiezan en fila 2
             row_num = idx + 2 if tiene_header else idx + 1
