@@ -546,6 +546,32 @@ async def webhook_handler(request: Request, background_tasks: BackgroundTasks):
     return {"status": "ok"}
 
 
+def _extraer_nombre_de_resumen(resumen: str) -> str | None:
+    """
+    Extrae el nombre del primer producto del bloque ---RESUMEN PARA SILVANA---.
+    Busca líneas con formato: "- Nombre del producto x{n} — estado"
+    Más preciso que buscar el nombre en el texto libre de la conversación.
+    """
+    for linea in resumen.splitlines():
+        stripped = linea.strip()
+        if not stripped.startswith("- "):
+            continue
+        contenido = stripped[2:].strip()
+        # Formato principal: "Nombre x2 — en stock" o "Nombre x1 — pedido especial"
+        m = re.match(r"^(.+?)\s+x\d", contenido)
+        if m:
+            nombre = m.group(1).strip()
+            if len(nombre) >= 4:
+                return nombre
+        # Formato sin cantidad: tomar todo antes del primer " — "
+        for sep in (" — ", " —", "—"):
+            if sep in contenido:
+                parte = contenido.split(sep)[0].strip()
+                if len(parte) >= 4:
+                    return parte
+    return None
+
+
 async def procesar_mensajes(mensajes: list[MensajeEntrante]):
     """
     Procesa los mensajes entrantes de forma asíncrona en segundo plano.
@@ -816,16 +842,20 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
             # restar 1 unidad en Google Sheets. Se ejecuta después de notificar a Silvana.
             if hay_senal_venta:
                 try:
-                    from agent.sheets import extraer_producto_de_venta, descontar_unidad
-                    nombre_producto = await extraer_producto_de_venta(msg.texto, respuesta)
+                    from agent.sheets import descontar_unidad
+                    # Extraer el nombre del producto del bloque RESUMEN PARA SILVANA.
+                    # Es más preciso que buscarlo en el texto libre de la conversación
+                    # porque Claude ya lo estructuró explícitamente en el resumen.
+                    nombre_producto = _extraer_nombre_de_resumen(resumen_inline) if resumen_inline else None
                     if nombre_producto:
+                        logger.info(f"[Stock] Nombre extraído del resumen: '{nombre_producto}'")
                         logger.info(f"[Stock] Intentando descontar: '{nombre_producto}'")
                         await descontar_unidad(nombre_producto)
                         logger.info(f"[Stock] Llamada a descontar_unidad completada para: '{nombre_producto}'")
                     else:
                         logger.info(
-                            "[Stock] Venta detectada pero no se identificó el producto — "
-                            "revisar manualmente en el sheet"
+                            "[Stock] Venta detectada sin resumen disponible — "
+                            "no se pudo identificar el producto para descontar"
                         )
                 except Exception as e:
                     logger.error(f"[Stock] Error al descontar stock: {e}")

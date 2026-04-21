@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -102,6 +103,23 @@ def _es_fila_header(fila: list) -> bool:
     return bool(fila) and fila[0].upper().strip() == "MARCA"
 
 
+# ── Búsqueda por tokens ───────────────────────────────────────────────────────
+
+_STOPWORDS = {"de", "la", "el", "para", "en", "y", "con", "un", "una", "los", "las", "del", "al"}
+
+
+def _tokenizar(texto: str) -> list[str]:
+    """Divide el texto en tokens relevantes, elimina stopwords y tokens muy cortos."""
+    tokens = re.sub(r"[^\w\s]", " ", texto.lower()).split()
+    return [t for t in tokens if t not in _STOPWORDS and len(t) >= 3]
+
+
+def _score_coincidencia(nombre_producto: str, tokens_query: list[str]) -> int:
+    """Cuenta cuántos tokens del query aparecen en el nombre del producto."""
+    nombre_lower = nombre_producto.lower()
+    return sum(1 for t in tokens_query if t in nombre_lower)
+
+
 # ── Funciones síncronas (se ejecutan en executor) ────────────────────────────
 
 def _sync_get_stock() -> list[dict]:
@@ -135,9 +153,10 @@ def _sync_get_producto(nombre: str) -> dict | None:
 
 def _sync_descontar_unidad(nombre: str) -> bool:
     """
-    Resta 1 a CANTIDAD del primer producto que coincida con el nombre.
-    Si CANTIDAD llega a 0, la deja en 0 (no va a negativo).
-    Retorna True si se actualizó correctamente.
+    Resta 1 a CANTIDAD del producto con mayor coincidencia de tokens.
+    Requiere al menos 2 tokens en común para considerar un match válido.
+    Si CANTIDAD es 0, la deja en 0 sin modificar.
+    Retorna True si encontró el producto (haya o no haya stock).
     """
     try:
         sheet = _get_sheet()
@@ -148,39 +167,66 @@ def _sync_descontar_unidad(nombre: str) -> bool:
         tiene_header = _es_fila_header(filas[0])
         datos = filas[1:] if tiene_header else filas
 
+        tokens_query = _tokenizar(nombre)
+        if not tokens_query:
+            logger.warning(f"[Sheets] Query '{nombre}' no generó tokens para buscar")
+            return False
+
+        logger.info(f"[Sheets] Buscando por tokens: {tokens_query} (query original: '{nombre}')")
+
+        # Evaluar todas las filas y quedarse con el mejor score
+        mejor_idx = -1
+        mejor_nombre_fila = ""
+        mejor_score = 0
+
         for idx, fila in enumerate(datos):
             nombre_fila = fila[_COL_NOMBRE].strip() if len(fila) > _COL_NOMBRE else ""
-            if not _nombre_coincide(nombre_fila, nombre):
+            if not nombre_fila:
                 continue
+            score = _score_coincidencia(nombre_fila, tokens_query)
+            if score > mejor_score:
+                mejor_score = score
+                mejor_idx = idx
+                mejor_nombre_fila = nombre_fila
 
-            try:
-                cantidad_actual = int(fila[_COL_CANTIDAD]) if len(fila) > _COL_CANTIDAD and fila[_COL_CANTIDAD].strip() else 0
-            except (ValueError, TypeError):
-                cantidad_actual = 0
-
-            logger.info(
-                f"[Sheets] Producto encontrado: '{nombre_fila}' | "
-                f"CANTIDAD actual={cantidad_actual}"
+        if mejor_score < 2 or mejor_idx < 0:
+            logger.warning(
+                f"[Sheets] No se encontró match con ≥2 tokens para '{nombre}' "
+                f"(tokens: {tokens_query} | mejor score: {mejor_score})"
             )
+            return False
 
-            if cantidad_actual == 0:
-                logger.info(f"[Sheets] '{nombre_fila}' ya tiene CANTIDAD=0 — sin modificar")
-                return True
+        logger.info(
+            f"[Sheets] Match encontrado: '{mejor_nombre_fila}' "
+            f"({mejor_score} tokens coincidentes)"
+        )
 
-            nueva_cantidad = cantidad_actual - 1
+        fila = datos[mejor_idx]
+        try:
+            cantidad_actual = int(fila[_COL_CANTIDAD]) if len(fila) > _COL_CANTIDAD and fila[_COL_CANTIDAD].strip() else 0
+        except (ValueError, TypeError):
+            cantidad_actual = 0
 
-            # Fila en gspread es 1-based; si hay header, los datos empiezan en fila 2
-            row_num = idx + 2 if tiene_header else idx + 1
-            sheet.update_cell(row_num, _COL_CANTIDAD + 1, nueva_cantidad)
+        logger.info(
+            f"[Sheets] Producto encontrado: '{mejor_nombre_fila}' | "
+            f"CANTIDAD actual={cantidad_actual}"
+        )
 
-            logger.info(
-                f"[Sheets] Stock actualizado: '{nombre_fila}' "
-                f"{cantidad_actual} → {nueva_cantidad}"
-            )
+        if cantidad_actual == 0:
+            logger.info(f"[Sheets] '{mejor_nombre_fila}' ya tiene CANTIDAD=0 — sin modificar")
             return True
 
-        logger.warning(f"[Sheets] No se encontró producto para descontar: '{nombre}'")
-        return False
+        nueva_cantidad = cantidad_actual - 1
+
+        # Fila en gspread es 1-based; si hay header, los datos empiezan en fila 2
+        row_num = mejor_idx + 2 if tiene_header else mejor_idx + 1
+        sheet.update_cell(row_num, _COL_CANTIDAD + 1, nueva_cantidad)
+
+        logger.info(
+            f"[Sheets] Stock actualizado: '{mejor_nombre_fila}' "
+            f"{cantidad_actual} → {nueva_cantidad}"
+        )
+        return True
 
     except Exception as e:
         logger.error(f"[Sheets] Error descontando unidad de '{nombre}': {e}")
