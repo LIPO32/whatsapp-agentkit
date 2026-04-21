@@ -546,30 +546,53 @@ async def webhook_handler(request: Request, background_tasks: BackgroundTasks):
     return {"status": "ok"}
 
 
-def _extraer_nombre_de_resumen(resumen: str) -> str | None:
+def _extraer_nombres_de_resumen(resumen: str) -> list[str]:
     """
-    Extrae el nombre del primer producto del bloque ---RESUMEN PARA SILVANA---.
-    Busca líneas con formato: "- Nombre del producto x{n} — estado"
-    Más preciso que buscar el nombre en el texto libre de la conversación.
+    Extrae TODOS los nombres de productos del bloque ---RESUMEN PARA SILVANA---.
+    Busca todas las líneas con formato: "- Nombre del producto x{n} — estado"
+    dentro de la sección PEDIDO:.
     """
+    nombres: list[str] = []
+    en_pedido = False
+
     for linea in resumen.splitlines():
         stripped = linea.strip()
+
+        # Detectar inicio de la sección PEDIDO
+        if stripped.upper().startswith("PEDIDO:"):
+            en_pedido = True
+            continue
+
+        # Salir de la sección PEDIDO cuando comienza otra sección (línea con ":" que no es "- ")
+        if en_pedido and stripped and not stripped.startswith("- ") and stripped.endswith(":"):
+            en_pedido = False
+            continue
+
+        if not en_pedido:
+            continue
+
         if not stripped.startswith("- "):
             continue
+
         contenido = stripped[2:].strip()
+
         # Formato principal: "Nombre x2 — en stock" o "Nombre x1 — pedido especial"
         m = re.match(r"^(.+?)\s+x\d", contenido)
         if m:
             nombre = m.group(1).strip()
             if len(nombre) >= 4:
-                return nombre
+                nombres.append(nombre)
+                continue
+
         # Formato sin cantidad: tomar todo antes del primer " — "
         for sep in (" — ", " —", "—"):
             if sep in contenido:
                 parte = contenido.split(sep)[0].strip()
                 if len(parte) >= 4:
-                    return parte
-    return None
+                    nombres.append(parte)
+                break
+
+    return nombres
 
 
 async def procesar_mensajes(mensajes: list[MensajeEntrante]):
@@ -846,12 +869,13 @@ async def procesar_mensajes(mensajes: list[MensajeEntrante]):
                     # Extraer el nombre del producto del bloque RESUMEN PARA SILVANA.
                     # Es más preciso que buscarlo en el texto libre de la conversación
                     # porque Claude ya lo estructuró explícitamente en el resumen.
-                    nombre_producto = _extraer_nombre_de_resumen(resumen_inline) if resumen_inline else None
-                    if nombre_producto:
-                        logger.info(f"[Stock] Nombre extraído del resumen: '{nombre_producto}'")
-                        logger.info(f"[Stock] Intentando descontar: '{nombre_producto}'")
-                        await descontar_unidad(nombre_producto)
-                        logger.info(f"[Stock] Llamada a descontar_unidad completada para: '{nombre_producto}'")
+                    nombres_productos = _extraer_nombres_de_resumen(resumen_inline) if resumen_inline else []
+                    if nombres_productos:
+                        logger.info(f"[Stock] {len(nombres_productos)} producto(s) extraído(s) del resumen: {nombres_productos}")
+                        for nombre_producto in nombres_productos:
+                            logger.info(f"[Stock] Intentando descontar: '{nombre_producto}'")
+                            await descontar_unidad(nombre_producto)
+                            logger.info(f"[Stock] descontar_unidad completada para: '{nombre_producto}'")
                     else:
                         logger.info(
                             "[Stock] Venta detectada sin resumen disponible — "
